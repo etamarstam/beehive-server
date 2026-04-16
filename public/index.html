@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🐝 Meshek Stam - ניטור כוורות</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --green-dark:  #2d5a27;
+      --green-mid:   #3a7a32;
+      --green-light: #4e9e44;
+      --green-pale:  #e8f5e2;
+      --red:         #d9534f;
+      --white:       #ffffff;
+      --gray-bg:     #f0f4f0;
+      --gray-border: #d4e0d2;
+      --text-dark:   #1a2e18;
+      --text-mid:    #4a5e48;
+      --text-light:  #7a8e78;
+      --shadow:      0 2px 12px rgba(45,90,39,0.10);
+      --radius:      14px;
+    }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: var(--gray-bg);
+      color: var(--text-dark);
+      direction: rtl;
+      min-height: 100vh;
+    }
+
+    header {
+      background: var(--green-dark);
+      color: var(--white);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+
+    header h1 { font-size: 1.4rem; font-weight: 700; }
+    #last-refresh { font-size: 0.8rem; color: #b8d8b0; }
+
+    main {
+      max-width: 1300px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+    }
+
+    /* ===== GRID ===== */
+    .scale-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 20px;
+    }
+
+    @media (max-width: 700px) {
+      .scale-grid { grid-template-columns: 1fr; }
+      header h1 { font-size: 1.1rem; }
+    }
+
+    /* ===== CARD ===== */
+    .scale-card {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid var(--gray-border);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Card top bar */
+    .card-topbar {
+      background: var(--green-dark);
+      color: var(--white);
+      padding: 10px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .scale-name-display {
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      border-bottom: 1px dashed rgba(255,255,255,0.5);
+      padding-bottom: 1px;
+    }
+    .scale-name-display:hover { opacity: 0.85; }
+
+    .scale-name-input {
+      font-size: 1rem;
+      font-weight: 700;
+      background: rgba(255,255,255,0.15);
+      color: var(--white);
+      border: 1px solid rgba(255,255,255,0.5);
+      border-radius: 5px;
+      padding: 2px 6px;
+      width: 160px;
+      direction: rtl;
+      display: none;
+    }
+
+    .scale-id-badge {
+      font-size: 0.68rem;
+      background: rgba(255,255,255,0.2);
+      border-radius: 20px;
+      padding: 2px 8px;
+      white-space: nowrap;
+    }
+
+    /* Card body */
+    .card-body {
+      padding: 14px 16px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* Weight */
+    .weight-row {
+      display: flex;
+      align-items: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .weight-value {
+      font-size: 2.8rem;
+      font-weight: 800;
+      color: var(--green-dark);
+      line-height: 1;
+    }
+
+    .weight-unit {
+      font-size: 1.1rem;
+      color: var(--text-mid);
+      margin-bottom: 5px;
+    }
+
+    .delta-badge {
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 20px;
+      margin-bottom: 5px;
+      white-space: nowrap;
+    }
+    .delta-positive { background: #e6f9ec; color: #1a7a3a; }
+    .delta-negative { background: #fdecea; color: #b33a36; }
+    .delta-neutral  { background: #f0f0f0; color: var(--text-mid); }
+
+    .last-tx {
+      font-size: 0.75rem;
+      color: var(--text-light);
+    }
+
+    .no-data {
+      font-size: 0.95rem;
+      color: var(--text-light);
+      font-style: italic;
+      padding: 8px 0;
+    }
+
+    /* Battery */
+    .battery-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .battery-label { font-size: 0.78rem; color: var(--text-mid); white-space: nowrap; }
+    .battery-bar-wrap {
+      flex: 1; height: 9px;
+      background: #e0e0e0;
+      border-radius: 6px; overflow: hidden;
+    }
+    .battery-bar-fill { height: 100%; border-radius: 6px; transition: width 0.4s; }
+    .battery-pct { font-size: 0.75rem; font-weight: 700; min-width: 32px; text-align: left; }
+    .bat-green  { background: #3ecc6f; }
+    .bat-yellow { background: #f5c518; }
+    .bat-red    { background: #d9534f; }
+
+    /* Divider */
+    .card-divider {
+      height: 1px;
+      background: var(--gray-border);
+      margin: 4px 0;
+    }
+
+    /* Mini chart */
+    .card-chart-wrap {
+      padding: 8px 16px 4px;
+      background: #fafcfa;
+    }
+    .card-chart-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 4px;
+    }
+    .card-chart-title {
+      font-size: 0.72rem;
+      color: var(--text-light);
+    }
+    .chart-range-btns {
+      display: flex;
+      gap: 3px;
+    }
+    .chart-range-btn {
+      font-size: 0.65rem;
+      padding: 2px 6px;
+      border: 1px solid var(--gray-border);
+      border-radius: 4px;
+      background: var(--white);
+      color: var(--text-mid);
+      cursor: pointer;
+      line-height: 1.4;
+    }
+    .chart-range-btn.active {
+      background: var(--green-dark);
+      color: var(--white);
+      border-color: var(--green-dark);
+    }
+    .card-chart-wrap canvas {
+      max-height: 120px;
+    }
+
+    /* Mini map */
+    .card-map {
+      height: 200px;
+      width: 100%;
+      z-index: 0;
+    }
+
+    /* Controls */
+    .card-controls {
+      padding: 10px 16px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      border-top: 1px solid var(--gray-border);
+      background: #fafcfa;
+    }
+
+    .interval-label { font-size: 0.8rem; color: var(--text-mid); white-space: nowrap; }
+    .interval-select {
+      font-size: 0.8rem;
+      border: 1px solid var(--gray-border);
+      border-radius: 6px;
+      padding: 3px 6px;
+      background: var(--white);
+      color: var(--text-dark);
+      cursor: pointer;
+      direction: rtl;
+    }
+    .interval-confirm {
+      font-size: 0.73rem;
+      color: var(--green-mid);
+      font-weight: 700;
+      opacity: 0;
+      transition: opacity 0.3s;
+    }
+    .interval-confirm.show { opacity: 1; }
+
+    .reset-btn {
+      margin-right: auto;
+      padding: 5px 12px;
+      background: var(--red);
+      color: var(--white);
+      border: none;
+      border-radius: 7px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .reset-btn:hover  { background: #b02a27; }
+    .reset-btn:active { transform: scale(0.97); }
+
+    /* ===== TOAST ===== */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(60px);
+      background: var(--green-dark);
+      color: var(--white);
+      padding: 10px 22px;
+      border-radius: 24px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      opacity: 0;
+      transition: opacity 0.3s, transform 0.3s;
+      z-index: 9999;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🐝 Meshek Stam - ניטור כוורות</h1>
+  <span id="last-refresh">טוען...</span>
+</header>
+
+<main>
+  <div class="scale-grid" id="scale-grid"></div>
+</main>
+
+<div id="toast"></div>
+
+<script>
+// ===== UTILS =====
+function batteryPct(mv) {
+  if (mv == null) return null;
+  return Math.max(0, Math.min(100, Math.round((mv - 3500) / (4200 - 3500) * 100)));
+}
+function batteryColorClass(pct) {
+  if (pct == null || pct > 60) return 'bat-green';
+  if (pct >= 30) return 'bat-yellow';
+  return 'bat-red';
+}
+function batteryTextColor(pct) {
+  if (pct == null || pct > 60) return '#1a7a3a';
+  if (pct >= 30) return '#9a7000';
+  return '#b33a36';
+}
+function timeAgo(isoStr) {
+  if (!isoStr) return 'לא ידוע';
+  const ts = isoStr.endsWith('Z') ? isoStr : isoStr + 'Z';
+  const diff = Date.now() - new Date(ts);
+  if (diff < 0) return 'זה עתה';
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return 'זה עתה';
+  if (m < 60) return `לפני ${m} דקות`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `לפני ${h} שעות`;
+  return `לפני ${Math.floor(h / 24)} ימים`;
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+const INTERVAL_OPTIONS = [15, 30, 60, 120, 240];
+const COLORS = ['#2d5a27','#e67e22','#2980b9','#8e44ad'];
+
+// Per-card state
+const cardCharts = {};
+const cardMaps   = {};
+const cardRanges = {}; // days per scale
+
+// ===== SATELLITE TILE =====
+const SATELLITE_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+const SATELLITE_ATTR  = 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community';
+
+// ===== BUILD CARD =====
+function buildCard(scale, idx) {
+  const hasData = scale.weight != null;
+  const pct = batteryPct(scale.battery_mv);
+  const color = COLORS[idx % COLORS.length];
+
+  let deltaBadge = '';
+  if (hasData && scale.delta24h != null) {
+    const d = scale.delta24h;
+    if (d > 0)      deltaBadge = `<span class="delta-badge delta-positive">▲ ${d.toFixed(2)} ק"ג (24ש)</span>`;
+    else if (d < 0) deltaBadge = `<span class="delta-badge delta-negative">▼ ${Math.abs(d).toFixed(2)} ק"ג (24ש)</span>`;
+    else            deltaBadge = `<span class="delta-badge delta-neutral">ללא שינוי (24ש)</span>`;
+  }
+
+  const intervalOpts = INTERVAL_OPTIONS.map(v =>
+    `<option value="${v}" ${scale.interval_minutes === v ? 'selected' : ''}>${v} דקות</option>`
+  ).join('');
+
+  const card = document.createElement('div');
+  card.className = 'scale-card';
+  card.id = `card-${scale.id}`;
+
+  card.innerHTML = `
+    <div class="card-topbar" style="background:${color}">
+      <span class="scale-name-display" id="name-display-${scale.id}" title="לחץ לעריכה">${escHtml(scale.name)}</span>
+      <input class="scale-name-input" id="name-input-${scale.id}" type="text" value="${escHtml(scale.name)}" />
+      <span class="scale-id-badge">${scale.id}</span>
+    </div>
+
+    <div class="card-body">
+      ${hasData ? `
+        <div class="weight-row">
+          <span class="weight-value">${parseFloat(scale.weight).toFixed(2)}</span>
+          <span class="weight-unit">ק"ג</span>
+          ${deltaBadge}
+        </div>
+        <div class="last-tx">שידור אחרון: ${timeAgo(scale.timestamp || scale.latest_timestamp)}</div>
+        <div class="battery-row">
+          <span class="battery-label">🔋</span>
+          <div class="battery-bar-wrap">
+            <div class="battery-bar-fill ${batteryColorClass(pct)}" style="width:${pct ?? 0}%"></div>
+          </div>
+          <span class="battery-pct" style="color:${batteryTextColor(pct)}">${pct != null ? pct + '%' : 'N/A'}</span>
+        </div>
+      ` : `<div class="no-data">אין נתונים עדיין</div>`}
+    </div>
+
+    <div class="card-chart-wrap">
+      <div class="card-chart-header">
+        <div class="card-chart-title">📈 משקל</div>
+        <div class="chart-range-btns" id="range-btns-${scale.id}">
+          <button class="chart-range-btn" data-days="7" data-scale="${scale.id}">7י</button>
+          <button class="chart-range-btn" data-days="30" data-scale="${scale.id}">30י</button>
+          <button class="chart-range-btn active" data-days="90" data-scale="${scale.id}">90י</button>
+        </div>
+      </div>
+      <canvas id="chart-${scale.id}"></canvas>
+    </div>
+
+    <div class="card-map" id="map-${scale.id}"></div>
+
+    <div class="card-controls">
+      <span class="interval-label">תדירות:</span>
+      <select class="interval-select" id="interval-${scale.id}" data-scale="${scale.id}">
+        ${intervalOpts}
+      </select>
+      <span class="interval-confirm" id="interval-confirm-${scale.id}">✓ נשלח</span>
+      <button class="reset-btn" data-scale="${scale.id}">🔄 אפס</button>
+    </div>
+  `;
+
+  return card;
+}
+
+// ===== INIT MINI CHART =====
+async function initCardChart(scale, color) {
+  const canvasId = `chart-${scale.id}`;
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+
+  if (!(scale.id in cardRanges)) cardRanges[scale.id] = 90;
+  const days = cardRanges[scale.id];
+
+  let history = [];
+  try {
+    const r = await fetch(`/api/history/${scale.id}?days=${days}`);
+    history = await r.json();
+  } catch(e) {}
+
+  const labels = history.map(h =>
+    new Date(h.timestamp).toLocaleDateString('he-IL', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})
+  );
+  const values = history.map(h => h.weight);
+
+  if (cardCharts[scale.id]) cardCharts[scale.id].destroy();
+
+  cardCharts[scale.id] = new Chart(canvas.getContext('2d'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: scale.name,
+        data: values,
+        borderColor: color,
+        backgroundColor: color.replace(')', ', 0.1)').replace('rgb', 'rgba'),
+        borderWidth: 2,
+        pointRadius: history.length > 50 ? 0 : 2,
+        fill: true,
+        tension: 0.3,
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: { label: c => `${c.parsed.y.toFixed(2)} ק"ג` }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#7a8e78', maxTicksLimit: 5, font: { size: 10 } },
+          grid: { color: '#e8f0e8' }
+        },
+        y: {
+          ticks: { color: '#7a8e78', font: { size: 10 }, callback: v => v.toFixed(1) },
+          grid: { color: '#e8f0e8' }
+        }
+      }
+    }
+  });
+}
+
+// ===== ATTACH RANGE BUTTONS =====
+function attachRangeButtons(scale, color) {
+  const container = document.getElementById(`range-btns-${scale.id}`);
+  if (!container) return;
+  container.querySelectorAll('.chart-range-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const days = parseInt(btn.dataset.days);
+      cardRanges[scale.id] = days;
+      container.querySelectorAll('.chart-range-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      await initCardChart(scale, color);
+    });
+  });
+}
+
+// ===== INIT MINI MAP =====
+function initCardMap(scale) {
+  const mapId = `map-${scale.id}`;
+  if (cardMaps[scale.id]) return; // already initialized
+
+  const lat = scale.lat || 31.7683;
+  const lon = scale.lon || 35.2137;
+
+  const map = L.map(mapId, { zoomControl: true, scrollWheelZoom: false }).setView([lat, lon], 18);
+
+  L.tileLayer(SATELLITE_TILES, {
+    attribution: SATELLITE_ATTR,
+    maxZoom: 19,
+  }).addTo(map);
+
+  const marker = L.marker([lat, lon])
+    .addTo(map)
+    .bindPopup(`<b>${scale.name}</b>`);
+
+  cardMaps[scale.id] = { map, marker };
+}
+
+// ===== ATTACH EVENTS =====
+function attachCardEvents(scale, idx) {
+  const card = document.getElementById(`card-${scale.id}`);
+
+  // Name edit
+  const display = document.getElementById(`name-display-${scale.id}`);
+  const input   = document.getElementById(`name-input-${scale.id}`);
+  display.addEventListener('click', () => {
+    display.style.display = 'none';
+    input.style.display = 'inline-block';
+    input.focus(); input.select();
+  });
+  const saveName = async () => {
+    const newName = input.value.trim();
+    display.style.display = '';
+    input.style.display = 'none';
+    if (!newName || newName === scale.name) return;
+    try {
+      const r = await fetch(`/api/scales/${scale.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newName, lat: scale.lat, lon: scale.lon })
+      });
+      if (r.ok) {
+        scale.name = newName;
+        display.textContent = newName;
+        showToast('שם הכוורת עודכן');
+      }
+    } catch(e) {}
+  };
+  input.addEventListener('blur', saveName);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') saveName();
+    if (e.key === 'Escape') { input.value = scale.name; display.style.display = ''; input.style.display = 'none'; }
+  });
+
+  // Interval
+  const sel = document.getElementById(`interval-${scale.id}`);
+  sel.addEventListener('change', async () => {
+    try {
+      await fetch('/api/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scale_id: scale.id, command: 'set_interval', value: sel.value })
+      });
+      const c = document.getElementById(`interval-confirm-${scale.id}`);
+      c.classList.add('show');
+      setTimeout(() => c.classList.remove('show'), 2000);
+    } catch(e) { showToast('שגיאה'); }
+  });
+
+  // Reset
+  card.querySelector('.reset-btn').addEventListener('click', async () => {
+    if (!confirm(`לאפס את ${scale.name}?`)) return;
+    try {
+      await fetch('/api/command', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scale_id: scale.id, command: 'reset', value: '' })
+      });
+      showToast(`פקודת איפוס נשלחה ל-${scale.name}`);
+    } catch(e) { showToast('שגיאה'); }
+  });
+}
+
+// ===== UPDATE CARD DATA =====
+function updateCardData(scale) {
+  const card = document.getElementById(`card-${scale.id}`);
+  if (!card) return;
+  const hasData = scale.weight != null;
+  const pct = batteryPct(scale.battery_mv);
+
+  const body = card.querySelector('.card-body');
+  let deltaBadge = '';
+  if (hasData && scale.delta24h != null) {
+    const d = scale.delta24h;
+    if (d > 0)      deltaBadge = `<span class="delta-badge delta-positive">▲ ${d.toFixed(2)} ק"ג (24ש)</span>`;
+    else if (d < 0) deltaBadge = `<span class="delta-badge delta-negative">▼ ${Math.abs(d).toFixed(2)} ק"ג (24ש)</span>`;
+    else            deltaBadge = `<span class="delta-badge delta-neutral">ללא שינוי (24ש)</span>`;
+  }
+
+  body.innerHTML = hasData ? `
+    <div class="weight-row">
+      <span class="weight-value">${parseFloat(scale.weight).toFixed(2)}</span>
+      <span class="weight-unit">ק"ג</span>
+      ${deltaBadge}
+    </div>
+    <div class="last-tx">שידור אחרון: ${timeAgo(scale.timestamp || scale.latest_timestamp)}</div>
+    <div class="battery-row">
+      <span class="battery-label">🔋</span>
+      <div class="battery-bar-wrap">
+        <div class="battery-bar-fill ${batteryColorClass(pct)}" style="width:${pct ?? 0}%"></div>
+      </div>
+      <span class="battery-pct" style="color:${batteryTextColor(pct)}">${pct != null ? pct + '%' : 'N/A'}</span>
+    </div>
+  ` : `<div class="no-data">אין נתונים עדיין</div>`;
+}
+
+// ===== REFRESH CHART =====
+async function refreshCardChart(scale) {
+  const chart = cardCharts[scale.id];
+  if (!chart) return;
+  try {
+    const days = cardRanges[scale.id] || 90;
+    const r = await fetch(`/api/history/${scale.id}?days=${days}`);
+    const history = await r.json();
+    chart.data.labels = history.map(h =>
+      new Date(h.timestamp).toLocaleDateString('he-IL', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})
+    );
+    chart.data.datasets[0].data = history.map(h => h.weight);
+    chart.data.datasets[0].label = scale.name;
+    chart.update('none');
+  } catch(e) {}
+}
+
+// ===== MAIN =====
+let dashboardData = [];
+let initialized = false;
+
+async function loadDashboard() {
+  try {
+    const r = await fetch('/api/dashboard');
+    if (!r.ok) throw new Error('network');
+    dashboardData = await r.json();
+
+    if (!initialized) {
+      // First load: build all cards
+      const grid = document.getElementById('scale-grid');
+      grid.innerHTML = '';
+      for (let i = 0; i < dashboardData.length; i++) {
+        const scale = dashboardData[i];
+        const card = buildCard(scale, i);
+        grid.appendChild(card);
+        attachCardEvents(scale, i);
+        await initCardChart(scale, COLORS[i % COLORS.length]);
+        attachRangeButtons(scale, COLORS[i % COLORS.length]);
+        initCardMap(scale);
+      }
+      initialized = true;
+    } else {
+      // Subsequent loads: update data only
+      for (let i = 0; i < dashboardData.length; i++) {
+        updateCardData(dashboardData[i]);
+        await refreshCardChart(dashboardData[i]);
+      }
+    }
+
+    document.getElementById('last-refresh').textContent =
+      `עודכן: ${new Date().toLocaleTimeString('he-IL')}`;
+  } catch(e) {
+    console.error(e);
+    document.getElementById('last-refresh').textContent = 'שגיאה בטעינה';
+  }
+}
+
+loadDashboard();
+setInterval(loadDashboard, 60000);
+</script>
+
+</body>
+</html>
