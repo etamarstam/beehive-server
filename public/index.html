@@ -52,6 +52,27 @@
     header h1 { font-size: 1.4rem; font-weight: 700; }
     #last-refresh { font-size: 0.8rem; color: #b8d8b0; }
 
+    #lock-btn {
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.35);
+      color: var(--white);
+      border-radius: 8px;
+      padding: 5px 12px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      transition: background 0.15s;
+    }
+    #lock-btn:hover { background: rgba(255,255,255,0.25); }
+    #lock-btn.unlocked { background: rgba(78,158,68,0.5); border-color: #4e9e44; }
+
+    /* Locked state: hide edit controls */
+    body.locked .scale-name-display { cursor: default; border-bottom: none; }
+    body.locked .card-controls { opacity: 0.45; pointer-events: none; }
+
     main {
       max-width: 1300px;
       margin: 0 auto;
@@ -316,7 +337,10 @@
 
 <header>
   <h1>🐝 Meshek Stam - ניטור כוורות</h1>
-  <span id="last-refresh">טוען...</span>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span id="last-refresh">טוען...</span>
+    <button id="lock-btn" title="נעול - לחץ להזנת מפתח">🔒 נעול</button>
+  </div>
 </header>
 
 <main>
@@ -370,6 +394,48 @@ const COLORS = ['#2d5a27','#e67e22','#2980b9','#8e44ad'];
 const cardCharts = {};
 const cardMaps   = {};
 const cardRanges = {}; // days per scale
+
+// ===== AUTH =====
+let apiKey = sessionStorage.getItem('beehive_key') || '';
+
+function isUnlocked() { return !!apiKey; }
+
+function applyLockState() {
+  const btn = document.getElementById('lock-btn');
+  if (isUnlocked()) {
+    document.body.classList.remove('locked');
+    btn.textContent = '🔓 נעול';
+    btn.classList.add('unlocked');
+    btn.title = 'לחץ לנעילה';
+  } else {
+    document.body.classList.add('locked');
+    btn.textContent = '🔒 נעול';
+    btn.classList.remove('unlocked');
+    btn.title = 'לחץ להזנת מפתח';
+  }
+}
+
+document.getElementById('lock-btn').addEventListener('click', () => {
+  if (isUnlocked()) {
+    apiKey = '';
+    sessionStorage.removeItem('beehive_key');
+    applyLockState();
+    showToast('ממשק ננעל');
+  } else {
+    const key = prompt('הזן מפתח גישה:');
+    if (!key) return;
+    apiKey = key.trim();
+    sessionStorage.setItem('beehive_key', apiKey);
+    applyLockState();
+    showToast('ממשק פתוח לעריכה');
+  }
+});
+
+function authHeaders() {
+  return { 'Content-Type': 'application/json', 'X-API-Key': apiKey };
+}
+
+applyLockState();
 
 // ===== SATELLITE TILE =====
 const SATELLITE_TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
@@ -563,10 +629,11 @@ function attachCardEvents(scale, idx) {
     display.style.display = '';
     input.style.display = 'none';
     if (!newName || newName === scale.name) return;
+    if (!isUnlocked()) { showToast('יש לפתוח את הממשק תחילה'); return; }
     try {
       const r = await fetch(`/api/scales/${scale.id}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ name: newName, lat: scale.lat, lon: scale.lon })
       });
       if (r.ok) {
@@ -585,10 +652,11 @@ function attachCardEvents(scale, idx) {
   // Interval
   const sel = document.getElementById(`interval-${scale.id}`);
   sel.addEventListener('change', async () => {
+    if (!isUnlocked()) { showToast('יש לפתוח את הממשק תחילה'); return; }
     try {
       await fetch('/api/command', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ scale_id: scale.id, command: 'set_interval', value: sel.value })
       });
       const c = document.getElementById(`interval-confirm-${scale.id}`);
@@ -599,11 +667,12 @@ function attachCardEvents(scale, idx) {
 
   // Reset
   card.querySelector('.reset-btn').addEventListener('click', async () => {
+    if (!isUnlocked()) { showToast('יש לפתוח את הממשק תחילה'); return; }
     if (!confirm(`לאפס את ${scale.name}?`)) return;
     try {
       await fetch('/api/command', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders(),
         body: JSON.stringify({ scale_id: scale.id, command: 'reset', value: '' })
       });
       showToast(`פקודת איפוס נשלחה ל-${scale.name}`);
