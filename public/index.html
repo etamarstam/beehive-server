@@ -260,11 +260,42 @@
     }
 
     /* Mini map */
+    .card-map-wrap { position: relative; }
     .card-map {
       height: 200px;
       width: 100%;
       z-index: 0;
     }
+    .map-pin-overlay {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      z-index: 500;
+      display: flex;
+      gap: 5px;
+    }
+    .map-pin-btn {
+      font-size: 0.72rem;
+      font-weight: 700;
+      padding: 4px 9px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      background: rgba(255,255,255,0.92);
+      color: var(--green-dark);
+      box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+      transition: background 0.15s;
+    }
+    .map-pin-btn:hover { background: var(--white); }
+    .map-pin-btn.picking {
+      background: #e67e22;
+      color: var(--white);
+      animation: pulse 1s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; } 50% { opacity: 0.7; }
+    }
+    .card-map.picking { cursor: crosshair; }
 
     /* Controls */
     .card-controls {
@@ -500,7 +531,12 @@ function buildCard(scale, idx) {
       <canvas id="chart-${scale.id}"></canvas>
     </div>
 
-    <div class="card-map" id="map-${scale.id}"></div>
+    <div class="card-map-wrap">
+      <div class="map-pin-overlay">
+        <button class="map-pin-btn" id="pin-btn-${scale.id}">📍 קבע מיקום</button>
+      </div>
+      <div class="card-map" id="map-${scale.id}"></div>
+    </div>
 
     <div class="card-controls">
       <span class="interval-label">תדירות:</span>
@@ -609,7 +645,48 @@ function initCardMap(scale) {
     .addTo(map)
     .bindPopup(`<b>${scale.name}</b>`);
 
-  cardMaps[scale.id] = { map, marker };
+  cardMaps[scale.id] = { map, marker, picking: false };
+
+  // Pin button
+  const pinBtn = document.getElementById(`pin-btn-${scale.id}`);
+  const mapEl  = document.getElementById(mapId);
+
+  pinBtn.addEventListener('click', () => {
+    if (!isUnlocked()) { showToast('יש לפתוח את הממשק תחילה'); return; }
+    const state = cardMaps[scale.id];
+    state.picking = !state.picking;
+    pinBtn.classList.toggle('picking', state.picking);
+    pinBtn.textContent = state.picking ? '✕ בטל' : '📍 קבע מיקום';
+    mapEl.classList.toggle('picking', state.picking);
+    if (state.picking) showToast('לחץ על המפה לקביעת מיקום הכוורת');
+  });
+
+  map.on('click', async (e) => {
+    const state = cardMaps[scale.id];
+    if (!state.picking) return;
+
+    const { lat: newLat, lng: newLon } = e.latlng;
+    marker.setLatLng([newLat, newLon]);
+    map.setView([newLat, newLon]);
+    scale.lat = newLat;
+    scale.lon = newLon;
+
+    // Exit pick mode
+    state.picking = false;
+    pinBtn.classList.remove('picking');
+    pinBtn.textContent = '📍 קבע מיקום';
+    mapEl.classList.remove('picking');
+
+    try {
+      const r = await fetch(`/api/scales/${scale.id}`, {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ name: scale.name, lat: newLat, lon: newLon })
+      });
+      if (r.ok) showToast('מיקום עודכן');
+      else showToast('שגיאה בשמירת המיקום');
+    } catch(e) { showToast('שגיאה בשמירת המיקום'); }
+  });
 }
 
 // ===== ATTACH EVENTS =====
