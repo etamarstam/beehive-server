@@ -570,8 +570,12 @@ async function initCardChart(scale, color) {
     new Date(h.timestamp).toLocaleDateString('he-IL', {day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit'})
   );
   const values = history.map(h => h.weight);
+  const timestamps = history.map(h => h.timestamp);
 
   if (cardCharts[scale.id]) cardCharts[scale.id].destroy();
+
+  // Adaptive point size: smaller when many points, bigger when few
+  const pointSize = history.length > 200 ? 1.5 : history.length > 50 ? 2.5 : 4;
 
   cardCharts[scale.id] = new Chart(canvas.getContext('2d'), {
     type: 'line',
@@ -581,20 +585,52 @@ async function initCardChart(scale, color) {
         label: scale.name,
         data: values,
         borderColor: color,
-        backgroundColor: color.replace(')', ', 0.1)').replace('rgb', 'rgba'),
-        borderWidth: 2,
-        pointRadius: history.length > 50 ? 0 : 2,
-        fill: true,
-        tension: 0.3,
+        backgroundColor: color,
+        borderWidth: 1.5,
+        pointRadius: pointSize,
+        pointHoverRadius: 7,
+        pointBackgroundColor: color,
+        pointBorderColor: '#fff',
+        pointBorderWidth: 1,
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: color,
+        pointHoverBorderWidth: 2,
+        fill: false,
+        tension: 0,
+        showLine: true,
       }]
     },
     options: {
       responsive: true,
       animation: false,
+      interaction: {
+        mode: 'nearest',
+        intersect: false,
+        axis: 'x'
+      },
       plugins: {
         legend: { display: false },
         tooltip: {
-          callbacks: { label: c => `${c.parsed.y.toFixed(2)} ק"ג` }
+          backgroundColor: 'rgba(255, 255, 255, 0.97)',
+          titleColor: '#2d4a2b',
+          bodyColor: '#2d4a2b',
+          borderColor: color,
+          borderWidth: 1,
+          titleFont: { size: 12, weight: 'bold' },
+          bodyFont: { size: 13 },
+          padding: 10,
+          cornerRadius: 6,
+          displayColors: false,
+          callbacks: {
+            title: ctx => {
+              const ts = timestamps[ctx[0].dataIndex];
+              return new Date(ts).toLocaleString('he-IL', {
+                day: '2-digit', month: '2-digit', year: 'numeric',
+                hour: '2-digit', minute: '2-digit'
+              });
+            },
+            label: c => `משקל: ${c.parsed.y.toFixed(2)} ק"ג`
+          }
         }
       },
       scales: {
