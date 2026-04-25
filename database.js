@@ -1,7 +1,14 @@
 const fs = require('fs');
 const path = require('path');
 
-const DB_FILE = path.join(__dirname, 'data.json');
+// Use DATA_DIR env var if set (for Railway Volume), else fallback to local dir
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const DB_FILE = path.join(DATA_DIR, 'data.json');
+
+// Ensure DATA_DIR exists (for Railway Volume mount)
+if (!fs.existsSync(DATA_DIR)) {
+  try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch(e) {}
+}
 
 function loadDB() {
   if (!fs.existsSync(DB_FILE)) {
