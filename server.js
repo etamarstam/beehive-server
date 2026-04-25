@@ -1,3 +1,4 @@
+// Beehive monitoring server - persistent storage via Railway Volume
 const express = require('express');
 const path = require('path');
 const db = require('./database');
